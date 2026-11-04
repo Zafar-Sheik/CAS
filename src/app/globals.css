@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* CAS brand: charcoal ink, warm paper, copper accent (from the company profile deck) */
+:root {
+  --background: #f3f1ec;
+  --foreground: #171715;
+  --card: #fdfcfa;
+  --card-foreground: #171715;
+  --muted: #ebe8e1;
+  --muted-foreground: #6b6862;
+  --border: #e0dcd3;
+  --input: #d8d4ca;
+  --primary: #171715;
+  --primary-foreground: #f3f1ec;
+  --accent: #b8732e;
+  --accent-soft: #f5e7d6;
+  --accent-foreground: #ffffff;
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --info: #0369a1;
+  --info-soft: #e0f2fe;
+  --ring: #d9954a;
+  --chart-1: #c27a35;
+  --chart-2: #1f74a0;
+  --chart-3: #8f8b83;
+  --grid: rgba(23, 23, 21, 0.06);
+  color-scheme: light;
+}
+
+
+.dark {
+  --background: #11110f;
+  --foreground: #f3f1ec;
+  --card: #1a1a18;
+  --card-foreground: #f3f1ec;
+  --muted: #24231f;
+  --muted-foreground: #a19e97;
+  --border: #2d2c28;
+  --input: #3a3934;
+  --primary: #f3f1ec;
+  --primary-foreground: #171715;
+  --accent: #d9954a;
+  --accent-soft: #3a2a19;
+  --accent-foreground: #171715;
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warning: #fbbf24;
+  --warning-soft: #3a2c0b;
+  --danger: #f87171;
+  --danger-soft: #3b1414;
+  --info: #38bdf8;
+  --info-soft: #0c2a3a;
+  --ring: #d9954a;
+  --chart-1: #c27a35;
+  --chart-2: #3d93c4;
+  --chart-3: #6b6862;
+  --grid: rgba(243, 241, 236, 0.06);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ring: var(--ring);
+  --color-copper: #d9954a;
+  --color-ink: #171715;
+  --color-paper: #f3f1ec;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
+}
+
+@keyframes shimmer {
+  from { background-position: 0 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes spotlight {
+  0% { opacity: 0; transform: translate(-72%, -62%) scale(0.5); }
+  100% { opacity: 1; transform: translate(-50%, -40%) scale(1); }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    overscroll-behavior-y: none;
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  /* 16px inputs stop iOS from zooming in on focus */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media (min-width: 768px) {
+    input, select, textarea { font-size: 14px; }
+  }
+  /* Grid children may shrink below their content width — prevents sideways scroll on phones. */
+  .grid > * {
+    min-width: 0;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+}

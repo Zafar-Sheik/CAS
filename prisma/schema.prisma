@@ -1,0 +1,546 @@
+// CAS ERP — data model
+// Database: TiDB (MySQL-compatible). Money is stored as DECIMAL(14,2).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Authentication (Better Auth)
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @db.VarChar(64)
+  name             String    @db.VarChar(191)
+  email            String    @unique @db.VarChar(191)
+  emailVerified    Boolean   @default(false)
+  image            String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  // admin plugin
+  role             String?   @default("staff") @db.VarChar(32)
+  banned           Boolean?  @default(false)
+  banReason        String?   @db.Text
+  banExpires       DateTime?
+  // two-factor plugin
+  twoFactorEnabled Boolean?  @default(false)
+
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+  auditLogs  AuditLog[]
+
+  @@map("user")
+}
+
+model Session {
+  id             String   @id @db.VarChar(64)
+  expiresAt      DateTime
+  token          String   @unique @db.VarChar(191)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?  @db.VarChar(64)
+  userAgent      String?  @db.Text
+  userId         String   @db.VarChar(64)
+  impersonatedBy String?  @db.VarChar(64)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @db.VarChar(64)
+  accountId             String    @db.VarChar(191)
+  providerId            String    @db.VarChar(64)
+  userId                String    @db.VarChar(64)
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @db.VarChar(64)
+  identifier String   @db.VarChar(191)
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model TwoFactor {
+  id                      String    @id @db.VarChar(64)
+  secret                  String    @db.VarChar(512)
+  backupCodes             String    @db.Text
+  userId                  String    @db.VarChar(64)
+  verified                Boolean?  @default(true)
+  failedVerificationCount Int?      @default(0)
+  lockedUntil             DateTime?
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+  @@map("twoFactor")
+}
+
+model RateLimit {
+  id          String @id @db.VarChar(64)
+  key         String @unique @db.VarChar(191)
+  count       Int
+  lastRequest BigInt
+
+  @@map("rateLimit")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Company & audit
+// ─────────────────────────────────────────────────────────────
+
+model CompanySettings {
+  id              Int      @id @default(1)
+  name            String   @db.VarChar(191)
+  legalName       String?  @db.VarChar(191)
+  regNumber       String?  @db.VarChar(64)
+  vatNumber       String?  @db.VarChar(64)
+  email           String?  @db.VarChar(191)
+  phone           String?  @db.VarChar(64)
+  address         String?  @db.Text
+  website         String?  @db.VarChar(191)
+  bankName        String?  @db.VarChar(128)
+  bankAccountName String?  @db.VarChar(191)
+  bankAccountNo   String?  @db.VarChar(64)
+  bankBranchCode  String?  @db.VarChar(32)
+  currency        String   @default("ZAR") @db.VarChar(8)
+  defaultVatRate  Decimal  @default(15) @db.Decimal(5, 2)
+  paymentTermDays Int      @default(30)
+  invoicePrefix   String   @default("INV") @db.VarChar(12)
+  quotePrefix     String   @default("QUO") @db.VarChar(12)
+  nextInvoiceNo   Int      @default(1001)
+  nextQuoteNo     Int      @default(1001)
+  nextReceiptNo   Int      @default(1001)
+  nextBillNo      Int      @default(1001)
+  nextPaymentNo   Int      @default(1001)
+  invoiceFooter   String?  @db.Text
+  allowNegativeStock Boolean @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  userId    String?  @db.VarChar(64)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   @db.VarChar(64)
+  entity    String   @db.VarChar(64)
+  entityId  String?  @db.VarChar(64)
+  summary   String   @db.VarChar(512)
+  ipAddress String?  @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Debtors (customers) & creditors (suppliers)
+// ─────────────────────────────────────────────────────────────
+
+model Customer {
+  id           String    @id @default(cuid()) @db.VarChar(32)
+  code         String    @unique @db.VarChar(32)
+  name         String    @db.VarChar(191)
+  contactName  String?   @db.VarChar(191)
+  email        String?   @db.VarChar(191)
+  phone        String?   @db.VarChar(64)
+  vatNumber    String?   @db.VarChar(64)
+  address      String?   @db.Text
+  creditLimit  Decimal   @default(0) @db.Decimal(14, 2)
+  termsDays    Int       @default(30)
+  notes        String?   @db.Text
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  invoices Invoice[]
+  quotes   Quote[]
+  receipts Receipt[]
+  projects Project[]
+
+  @@index([name])
+}
+
+model Supplier {
+  id          String   @id @default(cuid()) @db.VarChar(32)
+  code        String   @unique @db.VarChar(32)
+  name        String   @db.VarChar(191)
+  contactName String?  @db.VarChar(191)
+  email       String?  @db.VarChar(191)
+  phone       String?  @db.VarChar(64)
+  vatNumber   String?  @db.VarChar(64)
+  address     String?  @db.Text
+  termsDays   Int      @default(30)
+  bankDetails String?  @db.Text
+  notes       String?  @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bills    Bill[]
+  payments SupplierPayment[]
+
+  @@index([name])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Projects (architecture work is billed stage by stage)
+// ─────────────────────────────────────────────────────────────
+
+enum ProjectStage {
+  DISCOVERY
+  CONCEPT
+  DEVELOPMENT
+  DELIVERY
+  COMPLETE
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETE
+  CANCELLED
+}
+
+model Project {
+  id          String        @id @default(cuid()) @db.VarChar(32)
+  code        String        @unique @db.VarChar(32)
+  name        String        @db.VarChar(191)
+  customerId  String        @db.VarChar(32)
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  sector      String?       @db.VarChar(64)
+  location    String?       @db.VarChar(191)
+  sizeM2      Int?
+  stage       ProjectStage  @default(DISCOVERY)
+  status      ProjectStatus @default(ACTIVE)
+  feeValue    Decimal       @default(0) @db.Decimal(14, 2)
+  startDate   DateTime?
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  invoices Invoice[]
+  quotes   Quote[]
+
+  @@index([customerId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inventory & stock control
+// ─────────────────────────────────────────────────────────────
+
+enum ItemType {
+  STOCK
+  SERVICE
+}
+
+model Item {
+  id           String   @id @default(cuid()) @db.VarChar(32)
+  sku          String   @unique @db.VarChar(64)
+  name         String   @db.VarChar(191)
+  description  String?  @db.Text
+  type         ItemType @default(STOCK)
+  category     String?  @db.VarChar(64)
+  unit         String   @default("each") @db.VarChar(16)
+  costPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  sellPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  vatRate      Decimal  @default(15) @db.Decimal(5, 2)
+  qtyOnHand    Decimal  @default(0) @db.Decimal(14, 3)
+  reorderLevel Decimal  @default(0) @db.Decimal(14, 3)
+  location     String?  @db.VarChar(64)
+  barcode      String?  @db.VarChar(64)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  movements    StockMovement[]
+  invoiceLines InvoiceLine[]
+  quoteLines   QuoteLine[]
+  billLines    BillLine[]
+
+  @@index([name])
+  @@index([category])
+}
+
+enum MovementType {
+  OPENING
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN_IN
+  RETURN_OUT
+  VOID_REVERSAL
+}
+
+model StockMovement {
+  id        String       @id @default(cuid()) @db.VarChar(32)
+  itemId    String       @db.VarChar(32)
+  item      Item         @relation(fields: [itemId], references: [id])
+  type      MovementType
+  quantity  Decimal      @db.Decimal(14, 3) // signed: + in, − out
+  unitCost  Decimal      @default(0) @db.Decimal(14, 2)
+  balance   Decimal      @db.Decimal(14, 3) // qty on hand after this movement
+  reference String?      @db.VarChar(64)
+  note      String?      @db.VarChar(512)
+  userId    String?      @db.VarChar(64)
+  createdAt DateTime     @default(now())
+
+  @@index([itemId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sales: quotes, invoices, receipts
+// ─────────────────────────────────────────────────────────────
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  CONVERTED
+}
+
+model Quote {
+  id         String      @id @default(cuid()) @db.VarChar(32)
+  number     String      @unique @db.VarChar(32)
+  customerId String      @db.VarChar(32)
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  projectId  String?     @db.VarChar(32)
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status     QuoteStatus @default(DRAFT)
+  issueDate  DateTime
+  expiryDate DateTime
+  reference  String?     @db.VarChar(128)
+  notes      String?     @db.Text
+  subtotal   Decimal     @default(0) @db.Decimal(14, 2)
+  vatTotal   Decimal     @default(0) @db.Decimal(14, 2)
+  total      Decimal     @default(0) @db.Decimal(14, 2)
+  invoiceId  String?     @unique @db.VarChar(32)
+  createdById String?    @db.VarChar(64)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  lines QuoteLine[]
+
+  @@index([customerId])
+  @@index([issueDate])
+}
+
+model QuoteLine {
+  id          String  @id @default(cuid()) @db.VarChar(32)
+  quoteId     String  @db.VarChar(32)
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  itemId      String? @db.VarChar(32)
+  item        Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  description String  @db.VarChar(512)
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  vatRate     Decimal @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(14, 2) // excl. VAT, after discount
+  sortOrder   Int     @default(0)
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIAL
+  PAID
+  VOID
+}
+
+model Invoice {
+  id          String        @id @default(cuid()) @db.VarChar(32)
+  number      String        @unique @db.VarChar(32)
+  customerId  String        @db.VarChar(32)
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  projectId   String?       @db.VarChar(32)
+  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status      InvoiceStatus @default(DRAFT)
+  issueDate   DateTime
+  dueDate     DateTime
+  reference   String?       @db.VarChar(128)
+  notes       String?       @db.Text
+  subtotal    Decimal       @default(0) @db.Decimal(14, 2)
+  vatTotal    Decimal       @default(0) @db.Decimal(14, 2)
+  total       Decimal       @default(0) @db.Decimal(14, 2)
+  amountPaid  Decimal       @default(0) @db.Decimal(14, 2)
+  issuedAt    DateTime?
+  voidedAt    DateTime?
+  voidReason  String?       @db.VarChar(512)
+  createdById String?       @db.VarChar(64)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  lines       InvoiceLine[]
+  allocations ReceiptAllocation[]
+
+  @@index([customerId])
+  @@index([status, dueDate])
+  @@index([issueDate])
+}
+
+model InvoiceLine {
+  id          String  @id @default(cuid()) @db.VarChar(32)
+  invoiceId   String  @db.VarChar(32)
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  itemId      String? @db.VarChar(32)
+  item        Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  description String  @db.VarChar(512)
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  vatRate     Decimal @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
+}
+
+enum PaymentMethod {
+  EFT
+  CASH
+  CARD
+  CHEQUE
+  OTHER
+}
+
+model Receipt {
+  id          String        @id @default(cuid()) @db.VarChar(32)
+  number      String        @unique @db.VarChar(32)
+  customerId  String        @db.VarChar(32)
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  date        DateTime
+  amount      Decimal       @db.Decimal(14, 2)
+  method      PaymentMethod @default(EFT)
+  reference   String?       @db.VarChar(128)
+  notes       String?       @db.Text
+  createdById String?       @db.VarChar(64)
+  createdAt   DateTime      @default(now())
+
+  allocations ReceiptAllocation[]
+
+  @@index([customerId])
+  @@index([date])
+}
+
+model ReceiptAllocation {
+  id        String  @id @default(cuid()) @db.VarChar(32)
+  receiptId String  @db.VarChar(32)
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  invoiceId String  @db.VarChar(32)
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  amount    Decimal @db.Decimal(14, 2)
+
+  @@index([invoiceId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Purchases: supplier bills & payments (creditors)
+// ─────────────────────────────────────────────────────────────
+
+enum BillStatus {
+  DRAFT
+  POSTED
+  PARTIAL
+  PAID
+  VOID
+}
+
+model Bill {
+  id             String     @id @default(cuid()) @db.VarChar(32)
+  number         String     @unique @db.VarChar(32)
+  supplierId     String     @db.VarChar(32)
+  supplier       Supplier   @relation(fields: [supplierId], references: [id])
+  supplierRef    String?    @db.VarChar(128)
+  status         BillStatus @default(DRAFT)
+  issueDate      DateTime
+  dueDate        DateTime
+  category       String?    @db.VarChar(64)
+  notes          String?    @db.Text
+  subtotal       Decimal    @default(0) @db.Decimal(14, 2)
+  vatTotal       Decimal    @default(0) @db.Decimal(14, 2)
+  total          Decimal    @default(0) @db.Decimal(14, 2)
+  amountPaid     Decimal    @default(0) @db.Decimal(14, 2)
+  postedAt       DateTime?
+  voidedAt       DateTime?
+  createdById    String?    @db.VarChar(64)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  lines       BillLine[]
+  allocations SupplierPaymentAllocation[]
+
+  @@index([supplierId])
+  @@index([status, dueDate])
+  @@index([issueDate])
+}
+
+model BillLine {
+  id          String  @id @default(cuid()) @db.VarChar(32)
+  billId      String  @db.VarChar(32)
+  bill        Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  itemId      String? @db.VarChar(32)
+  item        Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  description String  @db.VarChar(512)
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  vatRate     Decimal @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
+}
+
+model SupplierPayment {
+  id          String        @id @default(cuid()) @db.VarChar(32)
+  number      String        @unique @db.VarChar(32)
+  supplierId  String        @db.VarChar(32)
+  supplier    Supplier      @relation(fields: [supplierId], references: [id])
+  date        DateTime
+  amount      Decimal       @db.Decimal(14, 2)
+  method      PaymentMethod @default(EFT)
+  reference   String?       @db.VarChar(128)
+  notes       String?       @db.Text
+  createdById String?       @db.VarChar(64)
+  createdAt   DateTime      @default(now())
+
+  allocations SupplierPaymentAllocation[]
+
+  @@index([supplierId])
+  @@index([date])
+}
+
+model SupplierPaymentAllocation {
+  id        String          @id @default(cuid()) @db.VarChar(32)
+  paymentId String          @db.VarChar(32)
+  payment   SupplierPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  billId    String          @db.VarChar(32)
+  bill      Bill            @relation(fields: [billId], references: [id])
+  amount    Decimal         @db.Decimal(14, 2)
+
+  @@index([billId])
+}
