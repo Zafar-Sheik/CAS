@@ -52,13 +52,22 @@ async function main() {
     },
   });
 
-  const email = (process.env.SEED_OWNER_EMAIL ?? "owner@cavemanarchitects.co.za").toLowerCase();
+  const env = (k: string) => process.env[k]?.trim() || undefined; // blank values count as unset
+  const email = (env("SEED_OWNER_EMAIL") ?? "owner@cavemanarchitects.co.za").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (!existing) {
-    const password = process.env.SEED_OWNER_PASSWORD ?? `Cas-${randomBytes(9).toString("base64url")}`;
+    const password = env("SEED_OWNER_PASSWORD") ?? `Cas-${randomBytes(9).toString("base64url")}`;
+    // Same rules the app enforces (src/lib/validation.ts passwordSchema)
+    if (
+      password.length < 12 ||
+      !(/[a-z]/.test(password) && /[A-Z]/.test(password)) ||
+      !(/\d/.test(password) || /[^A-Za-z0-9]/.test(password))
+    ) {
+      throw new Error("SEED_OWNER_PASSWORD needs 12+ characters, upper and lower case, and a number or symbol.");
+    }
     const id = randomUUID();
     await db.user.create({
-      data: { id, email, name: process.env.SEED_OWNER_NAME ?? "Studio Owner", emailVerified: true, role: "owner" },
+      data: { id, email, name: env("SEED_OWNER_NAME") ?? "Studio Owner", emailVerified: true, role: "owner" },
     });
     await db.account.create({
       data: { id: randomUUID(), accountId: id, providerId: "credential", userId: id, password: await hashPassword(password) },
