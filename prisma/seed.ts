@@ -8,7 +8,11 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { hashPassword } from "better-auth/crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const url = new URL(process.env.DATABASE_URL!);
+if (!process.env.DATABASE_URL?.trim()) {
+  console.error("\n  DATABASE_URL is not set. Put it in a file named .env in the project folder (next to package.json).\n");
+  process.exit(1);
+}
+const url = new URL(process.env.DATABASE_URL);
 const ssl = process.env.DATABASE_SSL === "true" || (url.hostname.endsWith("tidbcloud.com") && process.env.DATABASE_SSL !== "false");
 const db = new PrismaClient({
   adapter: new PrismaMariaDb({
