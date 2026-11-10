@@ -7,24 +7,13 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { hashPassword } from "better-auth/crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { poolConfigFromEnv } from "../src/lib/db-config";
 
 if (!process.env.DATABASE_URL?.trim()) {
   console.error("\n  DATABASE_URL is not set. Put it in a file named .env in the project folder (next to package.json).\n");
   process.exit(1);
 }
-const url = new URL(process.env.DATABASE_URL);
-const ssl = process.env.DATABASE_SSL === "true" || (url.hostname.endsWith("tidbcloud.com") && process.env.DATABASE_SSL !== "false");
-const db = new PrismaClient({
-  adapter: new PrismaMariaDb({
-    host: url.hostname,
-    port: Number(url.port || 4000),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: url.pathname.slice(1),
-    ssl: ssl ? { minVersion: "TLSv1.2", rejectUnauthorized: true } : undefined,
-    allowPublicKeyRetrieval: !ssl,
-  }),
-});
+const db = new PrismaClient({ adapter: new PrismaMariaDb(poolConfigFromEnv()) });
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000);
@@ -337,6 +326,10 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e);
+    // Prisma hides the driver's reason; dig it out so connection problems are readable.
+    let cause = e?.meta?.driverAdapterError?.cause ?? e?.cause;
+    while (cause?.cause) cause = cause.cause;
+    if (cause) console.error("\n  Underlying database error:", cause.originalMessage ?? cause.message ?? cause, "\n");
     process.exit(1);
   })
   .finally(() => db.$disconnect());
